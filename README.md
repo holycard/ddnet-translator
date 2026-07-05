@@ -1,238 +1,146 @@
-[![DDraceNetwork](https://ddnet.org/ddnet-small.png)](https://ddnet.org)
+# DDNet Chat Translator
 
-[![Build status](https://github.com/ddnet/ddnet/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ddnet/ddnet/actions/workflows/build.yml?branch=master)
-[![Code coverage](https://codecov.io/gh/ddnet/ddnet/branch/master/graph/badge.svg)](https://codecov.io/gh/ddnet/ddnet/branch/master)
-[![Translation status](https://hosted.weblate.org/widget/ddnet/ddnet/svg-badge.svg)](https://hosted.weblate.org/engage/ddnet/)
+A [DDNet](https://ddnet.org/) client modification — a built-in chat translator powered by the DeepL API. Translates incoming messages directly in-game and lets you reply in any language you choose, without switching to a third-party translator.
 
-Our own flavor of DDRace, a Teeworlds mod. See the [website](https://ddnet.org) for more information.
+> Works **client-side only** — this is not a server mod. The feature is only active for whoever builds/downloads this client, and works on any DDNet server regardless of whether other players have this modification installed.
 
-Development discussions happen on #ddnet on Quakenet ([Webchat](http://webchat.quakenet.org/?channels=ddnet&uio=d4)) or on [Discord in the developer channel](https://discord.gg/xsEd9xu).
+---
 
-You can get binary releases on the [DDNet website](https://ddnet.org/downloads/), find it on [Steam](https://store.steampowered.com/app/412220/DDraceNetwork/) or [install from repository](#installation-from-repository).
+## Screenshots
 
-- [Code Browser](https://ddnet.org/codebrowser/DDNet/)
-- [Source Code Documentation](https://codedoc.ddnet.org/)
-- [Building Guide](docs/BUILDING.md)
-- [Debugging Guide](docs/DEBUGGING.md)
-- [Contributing Guide](docs/CONTRIBUTING.md)
+<!-- Screenshot 1: an example of a translated message right in the in-game chat -->
+![Chat translation](screenshots/chat-translation.png)
 
-If you want to learn about the source code, you can check the [Development](https://wiki.ddnet.org/wiki/Development) article on the wiki.
+<!-- Screenshot 2: the full Translator settings tab (key, languages, checkboxes) -->
+![Translator settings tab](screenshots/settings-tab.png)
 
-## Cloning
+<!-- Screenshot 3: the Players tab with the Translate column -->
+![Translate column in the player list](screenshots/players-tab.png)
 
-To clone this repository with external libraries and no history (~700 MiB):
+---
 
-```sh
-git clone --depth 1 --recursive --shallow-submodules https://github.com/ddnet/ddnet
+## Features
+
+- Automatic translation of incoming **whispers (private messages)**.
+- Automatic translation of messages that **mention your name**.
+- A **"translate all chat"** mode — opt-in, one checkbox.
+- Marking a **specific player** whose messages are always translated, regardless of other settings.
+- Translating and sending **your own reply** — to a specific player or to the whole chat, in any language you pick.
+- Smart duplicate suppression: if a message is already in the language you're reading, the translation isn't shown again.
+- The language list is fetched directly from DeepL, with a search box — no need to remember language codes.
+
+---
+
+## Requirements
+
+Translation requires a **personal DeepL API key**. Without a key, the translator simply does nothing — the rest of the client works as a regular DDNet build.
+
+### Getting a key
+
+1. Sign up at [deepl.com/pro-api](https://www.deepl.com/pro-api) — there's a free tier (Free), whose keys end in `:fx`.
+2. Copy the key from your DeepL account dashboard.
+3. Paste it into the client: **Settings → Translator → DeepL API key**.
+
+Current free-tier limits (monthly character quota and terms) may change over time — check your DeepL account dashboard for up-to-date figures.
+
+**Never share or publish your key** — it's tied to your DeepL account and your quota.
+
+---
+
+## Installation / Building
+
+```bash
+sudo apt install build-essential cargo cmake git glslang-tools google-mock \
+  libavcodec-extra libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev \
+  libcurl4-openssl-dev libfreetype6-dev libglew-dev libnotify-dev libogg-dev \
+  libopus-dev libopusfile-dev libpng-dev libsdl2-dev libsqlite3-dev libssl-dev \
+  libvulkan-dev libwavpack-dev libx264-dev ninja-build python3 rustc spirv-tools
+
+git clone --recursive https://github.com/<your-username>/ddnet
+cd ddnet
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
 ```
 
-To clone this repository when you have the necessary libraries on your system already with no history (~150 MiB):
+Resulting binary: `build/DDNet`.
 
-```sh
-git clone --depth 1 https://github.com/ddnet/ddnet
+> If the build fails with an internal compiler error — this is a known bug in newer GCC versions when compiling `<format>`. Build with Clang instead:
+> ```bash
+> cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+> make -j$(nproc)
+> ```
+
+---
+
+## Setup after installation
+
+Open **Settings → Translator** in the client menu:
+
+<!-- You can duplicate the settings tab screenshot here with labeled fields -->
+![Translator tab setup](screenshots/settings-tab-annotated.png)
+
+1. **Enable chat translation** — turns translation on.
+2. **DeepL API key** — paste your key (see "Requirements" above).
+3. **Reading language** — the language incoming messages are translated into. The list is fetched from DeepL and includes search.
+4. **Reply language** — the language your own text is translated into when using the `/tw` and `/twa` commands.
+5. **Translate all chat messages** — enable this if you want the entire chat translated, not just whispers and mentions of your name.
+
+---
+
+## Commands
+
+Work **both in the in-game chat and in the console** (`~`) — you can type them as a regular console command, or directly into the chat box with a leading `/`.
+
+| Command | Where it works | What it does |
+|---|---|---|
+| `/tr text` | chat and console | Translates `text` into your **Reading language** and shows the result only to you — nothing is sent to anyone. Handy for quickly reading a foreign phrase or checking how something sounds in another language. |
+| `/tw Player text` | chat and console | Translates `text` into your **Reply language** and sends it to the given player as a whisper (like `/w`). |
+| `/twa text` | chat and console | Translates `text` into your **Reply language** and sends it to the whole chat, for everyone. |
+
+All three commands are saved in your chat history — you can recall them again with the **up arrow**, just like regular messages.
+
+**Example:**
 ```
-
-To clone this repository with external libraries and full history (~1 GiB):
-
-```sh
-git clone --recursive https://github.com/ddnet/ddnet
+/tw Player123 Hey, how's it going?
 ```
+`Player123` will receive a whisper with your phrase translated into whatever language is set as **Reply language**.
 
-To clone this repository when you have the necessary libraries on your system already with full history (~450 MiB):
+---
 
-```sh
-git clone https://github.com/ddnet/ddnet
-```
+## Marking individual players
 
-To clone this repository since we moved the libraries to https://github.com/ddnet/ddnet-libs with history (~250 MiB):
+The **Players** tab (the server player list — where the mute and friend buttons also live) has a **Translate** column.
 
-```sh
-git clone --shallow-exclude=included-libs https://github.com/ddnet/ddnet
-```
+<!-- Close-up screenshot: a player row with the Translate toggle enabled -->
+![Translate toggle on a player row](screenshots/player-translate-toggle.png)
 
-To clone the libraries if you have previously cloned DDNet without them, or if you require the ddnet-libs history instead of a shallow clone:
+Turning the toggle on for a specific player means you'll get a translation of **all** of their messages in regular chat — even if the general "translate all chat" mode is off, and even if they don't directly mention your name.
 
-```sh
-git submodule update --init --recursive
-```
+> This flag only lasts for the current session and resets on reconnect — unlike the friends list, it is not stored persistently.
 
-## Dependencies on Linux / macOS
+---
 
-You can install the required libraries on your system, `touch CMakeLists.txt` and CMake will use the system-wide libraries by default. You can install all required dependencies and CMake on Debian or Ubuntu like this:
+## How it works under the hood (brief)
 
-```sh
-sudo apt install build-essential cargo cmake git glslang-tools google-mock libavcodec-extra libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev libcurl4-openssl-dev libfreetype6-dev libglew-dev libnotify-dev libogg-dev libopus-dev libopusfile-dev libpng-dev libsdl2-dev libsqlite3-dev libssl-dev libvulkan-dev libwavpack-dev libx264-dev ninja-build python3 rustc spirv-tools
-```
-If you distribution doesn't ship with a `rustc` that is new enough, you can use `rustup` which automatically provides `rustc` 1.85.0 and above (this command removes `rustc` and reinstalls it as part of `rustup`.):
-```sh
-sudo apt install rustup
-```
+1. The server sends the client a chat message (whisper or regular).
+2. The client checks the translation conditions: is it a whisper? does it mention your name? is "translate all chat" enabled? is the sender marked with the Translate toggle?
+3. If a condition is met, the text is sent as an asynchronous HTTP request to the DeepL API, without blocking the game.
+4. When the response arrives, the source language detected by DeepL is compared to your **Reading language** — if they match, the translation isn't shown (to avoid duplicating identical text).
+5. Otherwise, the translation is printed as a separate line in chat, alongside the original.
+6. The `/tr`, `/tw`, and `/twa` commands work the same way, but with text you type yourself, and using **Reply language** instead of Reading language.
 
-In case the `rustc` dependency doesn't have the required version for any reason:
-```sh
-sudo apt install rustup-1.85
-```
+---
 
-On older distributions like Ubuntu 18.04 don't install `google-mock`, but instead set `-DDOWNLOAD_GTEST=ON` when building to get a more recent gtest/gmock version.
+## Known limitations
 
-On older distributions `rustc` version might be too old, to get an up-to-date Rust compiler you can use [rustup](https://rustup.rs/) with stable channel instead or try the `rustc-mozilla` package.
+- Requires your own DeepL API key — the feature doesn't work at all without one.
+- DeepL Free's limits (character quota) apply per account — heavy use (e.g. translating the entire chat on a busy server) will burn through your quota faster.
+- Translating your own messages only works through the explicit `/tw` / `/twa` commands, not automatically for regular messages sent with Enter.
+- The "always translate this player" flag doesn't persist across server rejoins.
 
-Or on CentOS, RedHat and AlmaLinux like this:
+---
 
-```sh
-sudo yum install cargo cmake ffmpeg-devel freetype-devel gcc gcc-c++ git glew-devel glslang gmock-devel gtest-devel libcurl-devel libnotify-devel libogg-devel libpng-devel libx264-devel ninja-build openssl-devel opus-devel opusfile-devel python3 rust SDL2-devel spirv-tools sqlite-devel vulkan-devel wavpack-devel
-```
+## Disclaimer
 
-Or on Fedora like this:
-
-```sh
-sudo dnf install cargo cmake ffmpeg-devel freetype-devel gcc gcc-c++ git glew-devel glslang gmock-devel gtest-devel libcurl-devel libnotify-devel libogg-devel libpng-devel make ninja-build openssl-devel opus-devel opusfile-devel python SDL2-devel spirv-tools sqlite-devel vulkan-devel wavpack-devel x264-devel
-```
-
-Or on Arch Linux like this:
-
-```sh
-sudo pacman -S --needed base-devel cmake curl ffmpeg freetype2 git glew glslang gmock libnotify libpng ninja opusfile python rust sdl2 spirv-tools sqlite vulkan-headers vulkan-icd-loader wavpack x264
-```
-
-Or on Gentoo like this:
-
-```sh
-emerge --ask dev-build/ninja dev-db/sqlite dev-lang/rust-bin dev-libs/glib dev-libs/openssl dev-util/glslang dev-util/spirv-headers dev-util/spirv-tools media-libs/freetype media-libs/glew media-libs/libglvnd media-libs/libogg media-libs/libpng media-libs/libsdl2 media-libs/libsdl2[vulkan] media-libs/opus media-libs/opusfile media-libs/pnglite media-libs/vulkan-loader[layers] media-sound/wavpack media-video/ffmpeg net-misc/curl x11-libs/gdk-pixbuf x11-libs/libnotify
-```
-
-Or on Void Linux like this:
-
-```sh
-sudo xbps-install -S base-devel cargo cmake ffmpeg6-devel freetype-devel git glew-devel glslang gtest-devel libcurl-devel libnotify-devel libogg-devel libpng-devel ninja openssl-devel opus-devel opusfile-devel sqlite-devel SPIRV-Tools-devel vulkan-loader wavpack-devel x264-devel SDL2-devel
-```
-
-On macOS you can use [homebrew](https://brew.sh/) to install build dependencies like this:
-
-```sh
-brew install cmake ffmpeg freetype glew glslang googletest libpng molten-vk ninja opusfile rust SDL2 spirv-tools vulkan-headers wavpack x264
-```
-
-If you don't want to use the system libraries, you can pass the `-DPREFER_BUNDLED_LIBS=ON` parameter to cmake.
-
-DDNet requires additional libraries, some of which are bundled for the most common platforms (Windows, Mac, Linux, all x86 and x86\_64) for convenience and the official builds. The bundled libraries for official builds are now in the ddnet-libs submodule. Note that when you build and develop locally, you should ideally use your system's package manager to install the dependencies, instead of relying on ddnet-libs submodule, which does not contain all dependencies anyway (e.g. openssl, vulkan). See the previous section for how to get the dependencies. Alternatively see our [Building Guide](docs/BUILDING.md) for how to disable some features and their dependencies (for example, `-DVULKAN=OFF` won't require Vulkan).
-
-## Building on Linux and macOS
-
-To compile DDNet yourself, execute the following commands in the source root:
-
-```sh
-cmake -Bbuild -GNinja
-cmake --build build
-```
-
-## Building on Windows with the Visual Studio IDE
-
-Download and install some version of [Microsoft Visual Studio](https://www.visualstudio.com/) (At the time of writing, MSVS Community 2022) with **C++ support**.
-
-You'll have to install both [Python 3](https://www.python.org/downloads/) and [Rust](https://rustup.rs/) as well.
-
-Make sure the MSVC build tools, C++ CMake-Tools and the latest Windows SDK version appropriate to your windows version are selected in the installer.
-
-Now open up your Project folder, Visual Studio should automatically detect and configure your project using CMake.
-
-On your tools hotbar next to the triangular "Run" Button, you can now select what you want to start (e.g game-client or game-server) and build it.
-
-## Building on Windows with standalone MSVC build tools
-
-First off you will need to install the following dependencies:
-
-- [MSVC Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/),
-- [Python 3](https://www.python.org/downloads/windows/),
-- [Rust](https://www.rust-lang.org/tools/install).
-
-To compile with the Vulkan graphics backend (disabled by default), you also need to install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home).
-
-To compile and build DDNet on Windows, use your IDE of choice either with a CMake integration (e.g Visual Studio Code), or by ~~**deprecated**~~ using the CMake GUI.
-
-Configure CMake to use the MSVC Build Tools appropriate to your System by your IDE's instructions.
-
-If you're using Visual Studio Code, you can use the [CMake Tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools) extension to configure and build the project.
-
-You can then open the project folder in Visual Studio Code and press `Ctrl+Shift+P` to open the command palette, then search for `CMake: Configure`.
-
-This will open up a prompt for you to select a kit, select your `Visual Studio` version and save it. You can now use the GUI (bottom left) to compile and build your project.
-
-
-<a href="https://repology.org/metapackage/ddnet/versions">
-	<img src="https://repology.org/badge/vertical-allrepos/ddnet.svg?header=" alt="Packaging status" align="right">
-</a>
-
-## Installation from Repository
-
-Debian/Ubuntu
-
-```sh
-sudo apt-get install ddnet
-```
-
-MacOS
-
-```sh
-brew install --cask ddnet
-```
-
-Fedora
-
-```sh
-sudo dnf install ddnet
-```
-
-Arch Linux
-
-```sh
-yay -S ddnet
-```
-
-FreeBSD
-
-```sh
-sudo pkg install DDNet
-```
-
-Windows (Scoop)
-```cmd
-scoop bucket add games
-scoop install games/ddnet
-```
-
-## Benchmarking
-
-Detailed instructions can be found in [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md).
-
-## Working with the official DDNet Database
-
-Detailed instructions can be found in [`docs/DATABASE.md`](docs/DATABASE.md).
-
-## Debugging
-
-Detailed instructions can be found in [`docs/DEBUGGING.md`](docs/DEBUGGING.md).
-
-## Better Git Blame
-
-First, use a better tool than `git blame` itself, e.g. [`tig`](https://jonas.github.io/tig/). There's probably a good UI for Windows, too. Alternatively, use the GitHub UI, click "Blame" in any file view.
-
-For `tig`, use `tig blame path/to/file.cpp` to open the blame view, you can navigate with arrow keys or kj, press comma to go to the previous revision of the current line, q to quit.
-
-Only then you could also set up git to ignore specific formatting revisions:
-
-```sh
-git config blame.ignoreRevsFile formatting-revs.txt
-```
-
-## (Neo)Vim Syntax Highlighting for config files
-
-Copy the file detection and syntax files to your vim config folder:
-
-```sh
-# vim
-cp -R other/vim/* ~/.vim/
-
-# neovim
-cp -R other/vim/* ~/.config/nvim/
-```
+This is an unofficial DDNet client modification, not affiliated with the DDNet team or DeepL SE. It uses the DeepL API under their terms of service — review [DeepL's API terms](https://www.deepl.com/pro-api) before use.

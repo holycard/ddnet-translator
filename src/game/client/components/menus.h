@@ -568,6 +568,7 @@ protected:
 	void UpdateCommunityCache(bool Force);
 
 	// found in menus_settings.cpp
+	void RenderSettingsTranslator(CUIRect MainView);
 	void RenderLanguageSettings(CUIRect MainView);
 	bool RenderLanguageSelection(CUIRect MainView);
 	void RenderThemeSelection(CUIRect MainView);
@@ -675,22 +676,6 @@ public:
 
 	enum
 	{
-		SETTINGS_LANGUAGE = 0,
-		SETTINGS_GENERAL,
-		SETTINGS_PLAYER,
-		SETTINGS_TEE,
-		SETTINGS_APPEARANCE,
-		SETTINGS_CONTROLS,
-		SETTINGS_GRAPHICS,
-		SETTINGS_SOUND,
-		SETTINGS_DDNET,
-		SETTINGS_ASSETS,
-
-		SETTINGS_LENGTH,
-	};
-
-	enum
-	{
 		BIG_TAB_NEWS = 0,
 		BIG_TAB_INTERNET,
 		BIG_TAB_LAN,
@@ -719,6 +704,21 @@ public:
 
 		SMALL_TAB_LENGTH,
 	};
+	enum
+{
+	SETTINGS_LANGUAGE = 0,
+	SETTINGS_GENERAL,
+	SETTINGS_PLAYER,
+	SETTINGS_TEE,
+	SETTINGS_APPEARANCE,
+	SETTINGS_CONTROLS,
+	SETTINGS_GRAPHICS,
+	SETTINGS_SOUND,
+	SETTINGS_DDNET,
+	SETTINGS_ASSETS,
+	SETTINGS_TRANSLATOR,
+	SETTINGS_LENGTH,
+};
 
 	SUIAnimator m_aAnimatorsBigPage[BIG_TAB_LENGTH];
 	SUIAnimator m_aAnimatorsSmallPage[SMALL_TAB_LENGTH];

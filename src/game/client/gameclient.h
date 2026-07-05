@@ -498,6 +498,7 @@ public:
 		bool m_EmoticonIgnore;
 		bool m_Friend;
 		bool m_Foe;
+		bool m_TranslateAlways;
 
 		int m_AuthLevel;
 		bool m_Afk;

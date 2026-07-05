@@ -500,7 +500,7 @@ void CMenus::RenderPlayers(CUIRect MainView)
 
 	// headline
 	PlayerList.HSplitTop(34.0f, &ButtonBar, &PlayerList);
-	ButtonBar.VSplitRight(231.0f, &Player, &ButtonBar);
+	ButtonBar.VSplitRight(321.0f, &Player, &ButtonBar); // было 231.0f, +90 под новую колонку
 	Ui()->DoLabel(&Player, Localize("Player"), 24.0f, TEXTALIGN_ML);
 
 	ButtonBar.HMargin(1.0f, &ButtonBar);
@@ -515,6 +515,10 @@ void CMenus::RenderPlayers(CUIRect MainView)
 	ButtonBar.VSplitLeft(20.0f, nullptr, &ButtonBar);
 	ButtonBar.VSplitLeft(Width, &Button, &ButtonBar);
 	RenderTools()->RenderIcon(IMAGE_GUIICONS, SPRITE_GUIICON_FRIEND, &Button);
+
+	ButtonBar.VSplitLeft(20.0f, nullptr, &ButtonBar);
+	ButtonBar.VSplitLeft(70.0f, &Button, &ButtonBar);
+	Ui()->DoLabel(&Button, Localize("Translate"), 12.0f, TEXTALIGN_MC);
 
 	int TotalPlayers = 0;
 	for(const auto &pInfoByName : GameClient()->m_Snap.m_apInfoByName)
@@ -534,7 +538,7 @@ void CMenus::RenderPlayers(CUIRect MainView)
 	s_ListBox.DoStart(24.0f, TotalPlayers, 1, 3, -1, &PlayerList);
 
 	// options
-	static char s_aPlayerIds[MAX_CLIENTS][4] = {{0}};
+	static char s_aPlayerIds[MAX_CLIENTS][5] = {{0}};
 
 	for(int i = 0, Count = 0; i < MAX_CLIENTS; ++i)
 	{
@@ -557,7 +561,9 @@ void CMenus::RenderPlayers(CUIRect MainView)
 		if(Count % 2 == 1)
 			Row.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f), IGraphics::CORNER_ALL, 5.0f);
 		Row.VSplitRight(s_ListBox.ScrollbarWidthMax() - s_ListBox.ScrollbarWidth(), &Row, nullptr);
-		Row.VSplitRight(300.0f, &Player, &Row);
+		Row.VSplitRight(390.0f, &Player, &Row);
+		CUIRect TranslateArea;
+		Row.VSplitRight(90.0f, &Row, &TranslateArea);
 
 		// player info
 		Player.VSplitLeft(28.0f, &Button, &Player);
@@ -616,6 +622,18 @@ void CMenus::RenderPlayers(CUIRect MainView)
 				GameClient()->Friends()->AddFriend(CurrentClient.m_aName, CurrentClient.m_aClan);
 
 			GameClient()->Client()->ServerBrowserUpdate();
+		}
+
+		// translate-always button
+		{
+			CUIRect TrButton;
+			TranslateArea.HMargin(2.0f, &TranslateArea);
+			TranslateArea.VSplitLeft((TranslateArea.w - TranslateArea.h) / 2.0f, nullptr, &TrButton);
+			TrButton.VSplitLeft(TrButton.h, &TrButton, nullptr);
+			if(DoButton_Toggle(&s_aPlayerIds[Index][4], CurrentClient.m_TranslateAlways, &TrButton, true))
+			{
+				CurrentClient.m_TranslateAlways ^= 1;
+			}
 		}
 	}
 

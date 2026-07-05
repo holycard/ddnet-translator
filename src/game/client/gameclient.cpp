@@ -3075,6 +3075,7 @@ void CGameClient::CClientData::Reset()
 	m_EmoticonIgnore = false;
 	m_Friend = false;
 	m_Foe = false;
+	m_TranslateAlways = false;
 
 	m_AuthLevel = AUTHED_NO;
 	m_Afk = false;

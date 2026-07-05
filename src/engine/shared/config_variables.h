@@ -12,6 +12,11 @@
 #endif
 
 // client
+MACRO_CONFIG_STR(ClTranslatorReplyLang, cl_translator_reply_lang, 8, "EN", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Language to translate your outgoing /tw messages into")
+MACRO_CONFIG_INT(ClTranslatorAllChat, cl_translator_all_chat, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Translate all chat messages, not just whispers/mentions")
+MACRO_CONFIG_INT(ClTranslatorEnabled, cl_translator_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable automatic chat translation")
+MACRO_CONFIG_STR(ClTranslatorApiKey, cl_translator_api_key, 128, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "DeepL API key")
+MACRO_CONFIG_STR(ClTranslatorTargetLang, cl_translator_target_lang, 8, "RU", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target language code for translation (e.g. RU, EN, DE)")
 MACRO_CONFIG_INT(ClPredict, cl_predict, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Predict client movements")
 MACRO_CONFIG_INT(ClPredictDummy, cl_predict_dummy, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Predict dummy movements")
 MACRO_CONFIG_INT(ClPredictEvents, cl_predict_events, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Predict events (sounds, particles)")
@@ -222,7 +227,7 @@ MACRO_CONFIG_STR(ClDummy7SkinEyes, dummy7_skin_eyes, protocol7::MAX_SKIN_ARRAY_S
 // MACRO_CONFIG_STR(ClCensorUrl, cl_censor_url, 100, "https://info.ddnet.org/censor.json", CFGFLAG_CLIENT | CFGFLAG_SAVE, "URL used to download words to censor (must start with https://)")
 
 MACRO_CONFIG_INT(UiPage, ui_page, 6, 6, 13, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface page")
-MACRO_CONFIG_INT(UiSettingsPage, ui_settings_page, 0, 0, 9, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface settings page")
+MACRO_CONFIG_INT(UiSettingsPage, ui_settings_page, 0, 0, 10, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Interface settings page")
 MACRO_CONFIG_INT(UiToolboxPage, ui_toolbox_page, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Toolbox page")
 MACRO_CONFIG_STR(UiServerAddress, ui_server_address, 1024, "localhost:8303", CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Interface server address")
 MACRO_CONFIG_INT(UiMousesens, ui_mousesens, 200, 1, 100000, CFGFLAG_SAVE | CFGFLAG_CLIENT, "Mouse sensitivity for menus/editor")

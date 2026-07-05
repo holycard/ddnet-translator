@@ -196,6 +196,7 @@ void CChat::ConEcho(IConsole::IResult *pResult, void *pUserData)
 	((CChat *)pUserData)->Echo(pResult->GetString(0));
 }
 
+
 void CChat::ConClearChat(IConsole::IResult *pResult, void *pUserData)
 {
 	((CChat *)pUserData)->ClearLines();
@@ -230,12 +231,18 @@ void CChat::Echo(const char *pString)
 
 void CChat::OnConsoleInit()
 {
+	Console()->Register("twa", "r[text]", CFGFLAG_CLIENT, ConTranslateSendAll, this, "Translate text into reply language and send to all chat");
 	Console()->Register("say", "r[message]", CFGFLAG_CLIENT, ConSay, this, "Say in chat");
+	Console()->Register("tw", "s[player] r[text]", CFGFLAG_CLIENT, ConTranslateSend, this, "Translate text into your reply language and send it as a whisper");
 	Console()->Register("say_team", "r[message]", CFGFLAG_CLIENT, ConSayTeam, this, "Say in team chat");
 	Console()->Register("chat", "s['team'|'all'] ?r[message]", CFGFLAG_CLIENT, ConChat, this, "Enable chat with all/team mode");
 	Console()->Register("+show_chat", "", CFGFLAG_CLIENT, ConShowChat, this, "Show chat");
 	Console()->Register("echo", "r[message]", CFGFLAG_CLIENT | CFGFLAG_STORE, ConEcho, this, "Echo the text in chat window");
 	Console()->Register("clear_chat", "", CFGFLAG_CLIENT | CFGFLAG_STORE, ConClearChat, this, "Clear chat messages");
+	Console()->Register("tr", "r[text]", CFGFLAG_CLIENT, ConTranslate, this, "Translate text via DeepL");
+	Console()->Register("translate_prev", "", CFGFLAG_CLIENT, ConTranslatePrev, this, "Select older chat line for translation");
+	Console()->Register("translate_next", "", CFGFLAG_CLIENT, ConTranslateNext, this, "Select newer chat line for translation");
+	Console()->Register("translate_confirm", "", CFGFLAG_CLIENT, ConTranslateConfirm, this, "Translate currently selected chat line");
 }
 
 void CChat::OnInit()
@@ -269,7 +276,20 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 			m_ServerCommandsNeedSorting = false;
 		}
 
-		SendChatQueued(m_Input.GetString());
+		const char *pLine = m_Input.GetString();
+if(str_startswith(pLine, "/tr ") || str_comp(pLine, "/tr") == 0 ||
+	str_startswith(pLine, "/tw ") || str_startswith(pLine, "/twa "))
+{
+	Console()->ExecuteLine(pLine + 1, IConsole::CLIENT_ID_UNSPECIFIED);
+		const int Length = str_length(pLine);
+	CHistoryEntry *pEntry = m_History.Allocate(sizeof(CHistoryEntry) + Length);
+	pEntry->m_Team = m_Mode == MODE_ALL ? 0 : 1;
+	str_copy(pEntry->m_aText, pLine, Length + 1);
+}
+else
+{
+	SendChatQueued(pLine);
+}
 		m_pHistoryEntry = nullptr;
 		DisableMode();
 		GameClient()->OnRelease();
@@ -532,6 +552,70 @@ void CChat::EnableMode(int Team)
 	}
 }
 
+
+static void TruncateAtDash(char *pStr)
+{
+	for(char *p = pStr; *p; ++p)
+	{
+		if(*p == '-')
+		{
+			*p = '\0';
+			break;
+		}
+	}
+}
+
+static bool LanguagesMatch(const char *pDetected, const char *pTarget)
+{
+	char aDetectedBase[8];
+	char aTargetBase[8];
+	str_copy(aDetectedBase, pDetected, sizeof(aDetectedBase));
+	str_copy(aTargetBase, pTarget, sizeof(aTargetBase));
+	TruncateAtDash(aDetectedBase);
+	TruncateAtDash(aTargetBase);
+	return str_comp_nocase(aDetectedBase, aTargetBase) == 0;
+}
+
+static void EscapeJsonString(char *pDst, size_t DstSize, const char *pSrc)
+{
+	size_t Pos = 0;
+	for(const char *p = pSrc; *p && Pos + 1 < DstSize; ++p)
+	{
+		char c = *p;
+		const char *pEscape = nullptr;
+		char aBuf[7];
+
+		switch(c)
+		{
+		case '"': pEscape = "\\\""; break;
+		case '\\': pEscape = "\\\\"; break;
+		case '\n': pEscape = "\\n"; break;
+		case '\r': pEscape = "\\r"; break;
+		case '\t': pEscape = "\\t"; break;
+		default:
+			if((unsigned char)c < 0x20)
+			{
+				str_format(aBuf, sizeof(aBuf), "\\u%04x", (unsigned char)c);
+				pEscape = aBuf;
+			}
+			break;
+		}
+
+		if(pEscape)
+		{
+			size_t Len = str_length(pEscape);
+			if(Pos + Len >= DstSize)
+				break;
+			str_copy(pDst + Pos, pEscape, DstSize - Pos);
+			Pos += Len;
+		}
+		else
+		{
+			pDst[Pos++] = c;
+		}
+	}
+	pDst[Pos] = '\0';
+}
 void CChat::DisableMode()
 {
 	if(m_Mode != MODE_NONE)
@@ -540,6 +624,101 @@ void CChat::DisableMode()
 		m_Input.Deactivate();
 	}
 }
+void CChat::MaybeTranslate(int ClientId, int Team, const char *pMessage)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return;
+	SClientAntiSpam &State = m_aAntiSpam[ClientId];
+
+	if(str_comp(State.m_aLastMessage, pMessage) == 0)
+		return;
+
+	int64_t Now = time_get();
+	int64_t ElapsedMs = (Now - State.m_LastTranslateTime) * 1000 / time_freq();
+	if(State.m_LastTranslateTime != 0 && ElapsedMs < 3000)
+		return;
+
+	str_copy(State.m_aLastMessage, pMessage, sizeof(State.m_aLastMessage));
+	State.m_LastTranslateTime = Now;
+
+	TranslateMessage(ClientId, Team, pMessage);  
+}
+
+
+void CChat::TranslateMessage(int ClientId, int Team, const char *pMessage)
+{
+	if(!g_Config.m_ClTranslatorEnabled || g_Config.m_ClTranslatorApiKey[0] == '\0')
+		return;
+
+	char aEscaped[512];
+	EscapeJsonString(aEscaped, sizeof(aEscaped), pMessage);
+
+	char aJson[768];
+	str_format(aJson, sizeof(aJson),
+		"{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
+		aEscaped, g_Config.m_ClTranslatorTargetLang);
+
+	std::shared_ptr<CHttpRequest> pRequest = std::make_shared<CHttpRequest>("https://api-free.deepl.com/v2/translate");
+	char aAuthHeader[160];
+	str_format(aAuthHeader, sizeof(aAuthHeader), "DeepL-Auth-Key %s", g_Config.m_ClTranslatorApiKey);
+	pRequest->HeaderString("Authorization", aAuthHeader);
+	pRequest->PostJson(aJson);
+	pRequest->WriteToMemory();
+	pRequest->Timeout(CTimeout{4000, 15000, 500, 5});
+
+	GameClient()->Http()->Run(pRequest);
+	m_vPendingTranslateRequests.push_back({pRequest, ClientId, Team});
+}
+
+void CChat::CheckTranslateReplies()
+{
+	for(size_t i = 0; i < m_vPendingTranslateRequests.size();)
+	{
+		auto &Entry = m_vPendingTranslateRequests[i];
+		EHttpState State = Entry.m_pRequest->State();
+		if(State == EHttpState::DONE)
+		{
+			json_value *pJson = Entry.m_pRequest->ResultJson();
+			if(pJson)
+			{
+				int FirstIndex = 0;
+				const json_value &Translation = (*pJson)["translations"][FirstIndex];
+				const char *pDetectedLang = Translation["detected_source_language"];
+				const char *pText = Translation["text"];
+
+				// печатаем перевод, только если исходный язык — не русский
+				if(pText && pDetectedLang && !LanguagesMatch(pDetectedLang, g_Config.m_ClTranslatorTargetLang))
+				{
+					char aLine[300];
+					str_format(aLine, sizeof(aLine), "[перевод] %s", pText);
+					AddLine(Entry.m_ClientId, Entry.m_Team, aLine);
+				}
+
+				json_value_free(pJson);
+			}
+			m_vPendingTranslateRequests.erase(m_vPendingTranslateRequests.begin() + i);
+		}
+		else if(State == EHttpState::ERROR || State == EHttpState::ABORTED)
+		{
+			m_vPendingTranslateRequests.erase(m_vPendingTranslateRequests.begin() + i);
+		}
+		else
+		{
+			++i;
+		}
+	}
+}
+
+
+
+
+void CChat::ConTranslate(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	const char *pText = pResult->GetString(0);
+	pThis->TranslateMessage(pThis->GameClient()->m_aLocalIds[0], 0, pText);
+}
+
 
 void CChat::OnMessage(int MsgType, void *pRawMsg)
 {
@@ -563,6 +742,32 @@ void CChat::OnMessage(int MsgType, void *pRawMsg)
 		*/
 
 		AddLine(pMsg->m_ClientId, pMsg->m_Team, pMsg->m_pMessage);
+		
+if(pMsg->m_Team == TEAM_WHISPER_RECV && pMsg->m_ClientId != GameClient()->m_aLocalIds[0])
+{
+	MaybeTranslate(pMsg->m_ClientId, pMsg->m_Team, pMsg->m_pMessage);
+}
+else if(pMsg->m_Team != TEAM_WHISPER_SEND && pMsg->m_ClientId >= 0 && pMsg->m_ClientId != GameClient()->m_aLocalIds[0])
+{
+	const char *pMyName = GameClient()->m_aClients[GameClient()->m_aLocalIds[0]].m_aName;
+	bool IsMention = LineShouldHighlight(pMsg->m_pMessage, pMyName);
+	bool IsMarkedPlayer = GameClient()->m_aClients[pMsg->m_ClientId].m_TranslateAlways;
+	if(g_Config.m_ClTranslatorAllChat || IsMention || IsMarkedPlayer)
+	{
+		MaybeTranslate(pMsg->m_ClientId, pMsg->m_Team, pMsg->m_pMessage);
+	}
+}
+
+else if(pMsg->m_Team != TEAM_WHISPER_SEND && pMsg->m_ClientId >= 0 && pMsg->m_ClientId != GameClient()->m_aLocalIds[0])
+{
+	const char *pMyName = GameClient()->m_aClients[GameClient()->m_aLocalIds[0]].m_aName;
+	bool IsMention = LineShouldHighlight(pMsg->m_pMessage, pMyName);
+	if(g_Config.m_ClTranslatorAllChat || IsMention)
+	{
+		MaybeTranslate(pMsg->m_ClientId, pMsg->m_Team, pMsg->m_pMessage);
+	}
+}	
+
 
 		if(Client()->State() != IClient::STATE_DEMOPLAYBACK &&
 			pMsg->m_ClientId == SERVER_MSG)
@@ -585,6 +790,136 @@ void CChat::OnMessage(int MsgType, void *pRawMsg)
 		CNetMsg_Sv_CommandInfoRemove *pMsg = (CNetMsg_Sv_CommandInfoRemove *)pRawMsg;
 		UnregisterCommand(pMsg->m_pName);
 	}
+}
+
+void CChat::TranslateAndSendAll(const char *pText)
+{
+	if(g_Config.m_ClTranslatorApiKey[0] == '\0')
+		return;
+
+	char aEscaped[512];
+	EscapeJsonString(aEscaped, sizeof(aEscaped), pText);
+
+	char aJson[768];
+	str_format(aJson, sizeof(aJson),
+		"{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
+		aEscaped, g_Config.m_ClTranslatorReplyLang);
+
+	std::shared_ptr<CHttpRequest> pRequest = std::make_shared<CHttpRequest>("https://api-free.deepl.com/v2/translate");
+	char aAuthHeader[160];
+	str_format(aAuthHeader, sizeof(aAuthHeader), "DeepL-Auth-Key %s", g_Config.m_ClTranslatorApiKey);
+	pRequest->HeaderString("Authorization", aAuthHeader);
+	pRequest->PostJson(aJson);
+	pRequest->WriteToMemory();
+	pRequest->Timeout(CTimeout{4000, 15000, 500, 5});
+
+	GameClient()->Http()->Run(pRequest);
+
+	SPendingSendTranslateRequest Entry;
+	Entry.m_pRequest = pRequest;
+	Entry.m_aPlayerName[0] = '\0'; // пусто = общий чат
+	m_vPendingSendTranslateRequests.push_back(Entry);
+}
+
+void CChat::ConTranslateSendAll(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	pThis->TranslateAndSendAll(pResult->GetString(0));
+}
+
+void CChat::FetchLanguageList()
+{
+	if(m_LanguageListRequested || g_Config.m_ClTranslatorApiKey[0] == '\0')
+		return;
+	m_LanguageListRequested = true;
+
+	m_pLanguageListRequest = std::make_shared<CHttpRequest>("https://api-free.deepl.com/v2/languages?type=target");
+	char aAuthHeader[160];
+	str_format(aAuthHeader, sizeof(aAuthHeader), "DeepL-Auth-Key %s", g_Config.m_ClTranslatorApiKey);
+	m_pLanguageListRequest->HeaderString("Authorization", aAuthHeader);
+	m_pLanguageListRequest->WriteToMemory();
+	m_pLanguageListRequest->Timeout(CTimeout{4000, 15000, 500, 5});
+
+	GameClient()->Http()->Run(m_pLanguageListRequest);
+}
+
+void CChat::CheckLanguageListReply()
+{
+	if(!m_pLanguageListRequest)
+		return;
+
+	EHttpState State = m_pLanguageListRequest->State();
+	if(State == EHttpState::DONE)
+	{
+		json_value *pJson = m_pLanguageListRequest->ResultJson();
+		if(pJson)
+		{
+			m_vLanguageList.clear();
+			const json_value &Arr = *pJson;
+			for(unsigned i = 0; i < Arr.u.array.length; i++)
+			{
+				const json_value &Entry = Arr[(int)i];
+				const char *pCode = Entry["language"];
+				const char *pName = Entry["name"];
+				if(pCode && pName)
+				{
+					SLanguageEntry E;
+					str_copy(E.m_aCode, pCode, sizeof(E.m_aCode));
+					str_copy(E.m_aName, pName, sizeof(E.m_aName));
+					m_vLanguageList.push_back(E);
+				}
+			}
+			json_value_free(pJson);
+		}
+		m_pLanguageListRequest = nullptr;
+	}
+	else if(State == EHttpState::ERROR || State == EHttpState::ABORTED)
+	{
+		m_pLanguageListRequest = nullptr;
+		m_LanguageListRequested = false; // разрешаем повторить попытку позже
+	}
+}
+
+void CChat::ShowTranslateCursor()
+{
+	if(m_TranslateCursor < 0)
+		m_TranslateCursor = 0;
+	if(m_TranslateCursor >= MAX_LINES)
+		m_TranslateCursor = MAX_LINES - 1;
+
+	int Index = ((m_CurrentLine - m_TranslateCursor) + MAX_LINES) % MAX_LINES;
+	CLine &Line = m_aLines[Index];
+	if(!Line.m_Initialized)
+		return;
+
+	char aPreview[300];
+	str_format(aPreview, sizeof(aPreview), "-> [%d] %s: %s", m_TranslateCursor, Line.m_aName, Line.m_aText);
+	Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "translate", aPreview);
+}
+
+void CChat::ConTranslatePrev(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	pThis->m_TranslateCursor++;
+	pThis->ShowTranslateCursor();
+}
+
+void CChat::ConTranslateNext(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	pThis->m_TranslateCursor--;
+	pThis->ShowTranslateCursor();
+}
+
+void CChat::ConTranslateConfirm(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	int Index = ((pThis->m_CurrentLine - pThis->m_TranslateCursor) + MAX_LINES) % MAX_LINES;
+	CLine &Line = pThis->m_aLines[Index];
+	if(!Line.m_Initialized)
+		return;
+
+	pThis->TranslateMessage(Line.m_ClientId, Line.m_TeamNumber, Line.m_aText);
 }
 
 bool CChat::LineShouldHighlight(const char *pLine, const char *pName)
@@ -1150,8 +1485,108 @@ void CChat::OnPrepareLines(float y)
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 }
 
+static void TruncateUtf8(char *pStr, size_t MaxBytes)
+{
+	size_t Len = str_length(pStr);
+	if(Len < MaxBytes)
+		return;
+
+	size_t Cut = MaxBytes;
+	while(Cut > 0 && (pStr[Cut] & 0xC0) == 0x80)
+		Cut--;
+
+	pStr[Cut] = '\0';
+}
+
+
+void CChat::TranslateAndSend(const char *pPlayerName, const char *pText)
+{
+	if(g_Config.m_ClTranslatorApiKey[0] == '\0')
+		return;
+
+	char aEscaped[512];
+	EscapeJsonString(aEscaped, sizeof(aEscaped), pText);
+
+	char aJson[768];
+	str_format(aJson, sizeof(aJson),
+		"{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
+		aEscaped, g_Config.m_ClTranslatorReplyLang);
+
+	std::shared_ptr<CHttpRequest> pRequest = std::make_shared<CHttpRequest>("https://api-free.deepl.com/v2/translate");
+	char aAuthHeader[160];
+	str_format(aAuthHeader, sizeof(aAuthHeader), "DeepL-Auth-Key %s", g_Config.m_ClTranslatorApiKey);
+	pRequest->HeaderString("Authorization", aAuthHeader);
+	pRequest->PostJson(aJson);
+	pRequest->WriteToMemory();
+	pRequest->Timeout(CTimeout{4000, 15000, 500, 5});
+
+	GameClient()->Http()->Run(pRequest);
+
+	SPendingSendTranslateRequest Entry;
+	Entry.m_pRequest = pRequest;
+	str_copy(Entry.m_aPlayerName, pPlayerName, sizeof(Entry.m_aPlayerName));
+	m_vPendingSendTranslateRequests.push_back(Entry);
+}
+
+void CChat::CheckSendTranslateReplies()
+{
+	for(size_t i = 0; i < m_vPendingSendTranslateRequests.size();)
+	{
+		auto &Entry = m_vPendingSendTranslateRequests[i];
+		EHttpState State = Entry.m_pRequest->State();
+		if(State == EHttpState::DONE)
+		{
+			json_value *pJson = Entry.m_pRequest->ResultJson();
+			if(pJson)
+			{
+				int FirstIndex = 0;
+				const char *pText = (*pJson)["translations"][FirstIndex]["text"];
+				if(pText)
+{
+	char aTrimmed[200];
+	str_copy(aTrimmed, pText, sizeof(aTrimmed));
+	TruncateUtf8(aTrimmed, sizeof(aTrimmed) - 1);
+
+	if(Entry.m_aPlayerName[0] != '\0')
+	{
+		char aReply[256];
+		str_format(aReply, sizeof(aReply), "/w %s %s", Entry.m_aPlayerName, aTrimmed);
+		SendChat(0, aReply);
+	}
+	else
+	{
+		SendChat(0, aTrimmed); // общий чат
+	}
+}
+				json_value_free(pJson);
+			}
+			m_vPendingSendTranslateRequests.erase(m_vPendingSendTranslateRequests.begin() + i);
+		}
+		else if(State == EHttpState::ERROR || State == EHttpState::ABORTED)
+		{
+			m_vPendingSendTranslateRequests.erase(m_vPendingSendTranslateRequests.begin() + i);
+		}
+		else
+		{
+			++i;
+		}
+	}
+}
+
+void CChat::ConTranslateSend(IConsole::IResult *pResult, void *pUserData)
+{
+	CChat *pThis = (CChat *)pUserData;
+	const char *pPlayerName = pResult->GetString(0);
+	const char *pText = pResult->GetString(1);
+	pThis->TranslateAndSend(pPlayerName, pText);
+}
+
 void CChat::OnRender()
 {
+	
+	CheckTranslateReplies();
+	CheckLanguageListReply();
+	CheckSendTranslateReplies();
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 
@@ -1345,12 +1780,9 @@ void CChat::EnsureCoherentWidth() const
 
 void CChat::SendChat(int Team, const char *pLine)
 {
-	// don't send empty messages
 	if(*str_utf8_skip_whitespaces(pLine) == '\0')
 		return;
-
 	m_LastChatSend = time();
-
 	if(GameClient()->Client()->IsSixup())
 	{
 		protocol7::CNetMsg_Cl_Say Msg7;
@@ -1360,8 +1792,6 @@ void CChat::SendChat(int Team, const char *pLine)
 		Client()->SendPackMsgActive(&Msg7, MSGFLAG_VITAL, true);
 		return;
 	}
-
-	// send chat message
 	CNetMsg_Cl_Say Msg;
 	Msg.m_Team = Team;
 	Msg.m_pMessage = pLine;

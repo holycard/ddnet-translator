@@ -3,7 +3,7 @@
 #include "countryflags.h"
 #include "menus.h"
 #include "skins.h"
-
+#include <game/client/ui_scrollregion.h>
 #include <base/dbg.h>
 #include <base/fs.h>
 #include <base/log.h>
@@ -1415,6 +1415,7 @@ bool CMenus::RenderLanguageSelection(CUIRect MainView)
 	return s_ListBox.WasItemActivated();
 }
 
+
 void CMenus::RenderSettings(CUIRect MainView)
 {
 	// render background
@@ -1433,17 +1434,18 @@ void CMenus::RenderSettings(CUIRect MainView)
 	TabBar.HSplitTop(50.0f, &Button, &TabBar);
 	Button.Draw(ms_ColorTabbarActive, IGraphics::CORNER_BR, 10.0f);
 
-	const char *apTabs[SETTINGS_LENGTH] = {
-		Localize("Language"),
-		Localize("General"),
-		Localize("Player"),
-		Client()->IsSixup() ? "Tee 0.7" : Localize("Tee"),
-		Localize("Appearance"),
-		Localize("Controls"),
-		Localize("Graphics"),
-		Localize("Sound"),
-		Localize("DDNet"),
-		Localize("Assets")};
+const char *apTabs[SETTINGS_LENGTH] = {
+	Localize("Language"),
+	Localize("General"),
+	Localize("Player"),
+	Client()->IsSixup() ? "Tee 0.7" : Localize("Tee"),
+	Localize("Appearance"),
+	Localize("Controls"),
+	Localize("Graphics"),
+	Localize("Sound"),
+	Localize("DDNet"),
+	Localize("Assets"),
+	Localize("Translator")};
 	static CButtonContainer s_aTabButtons[SETTINGS_LENGTH];
 
 	for(int i = 0; i < SETTINGS_LENGTH; i++)
@@ -1507,6 +1509,11 @@ void CMenus::RenderSettings(CUIRect MainView)
 		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
 		RenderSettingsCustom(MainView);
 	}
+	else if(g_Config.m_UiSettingsPage == SETTINGS_TRANSLATOR)
+{
+	GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_RESERVED0);
+	RenderSettingsTranslator(MainView);
+}
 	else
 	{
 		dbg_assert_failed("ui_settings_page invalid");
@@ -3085,4 +3092,142 @@ int CMenus::CPopupMapPickerContext::MapListFetchCallback(const CFsFileInfo *pInf
 	pRealUser->m_vMaps.emplace_back(Item);
 
 	return 0;
+}
+void CMenus::RenderSettingsTranslator(CUIRect MainView)
+{
+	CUIRect Button, Label;
+
+	MainView.HSplitTop(20.0f, &Button, &MainView);
+	if(DoButton_CheckBox(&g_Config.m_ClTranslatorEnabled, Localize("Enable chat translation"), g_Config.m_ClTranslatorEnabled, &Button))
+	{
+		g_Config.m_ClTranslatorEnabled ^= 1;
+	}
+
+	MainView.HSplitTop(5.0f, nullptr, &MainView);
+	MainView.HSplitTop(20.0f, &Button, &MainView);
+	if(DoButton_CheckBox(&g_Config.m_ClTranslatorAllChat, Localize("Translate all chat messages (not just whispers/mentions)"), g_Config.m_ClTranslatorAllChat, &Button))
+	{
+		g_Config.m_ClTranslatorAllChat ^= 1;
+	}
+
+	MainView.HSplitTop(15.0f, nullptr, &MainView);
+	MainView.HSplitTop(20.0f, &Label, &MainView);
+	MainView.HSplitTop(2.0f, nullptr, &MainView);
+	Ui()->DoLabel(&Label, Localize("DeepL API key"), 14.0f, TEXTALIGN_ML);
+	MainView.HSplitTop(20.0f, &Button, &MainView);
+	static CLineInput s_ApiKeyInput(g_Config.m_ClTranslatorApiKey, sizeof(g_Config.m_ClTranslatorApiKey));
+	s_ApiKeyInput.SetEmptyText(Localize("Your DeepL API key (ends with :fx for Free plan)"));
+	Ui()->DoEditBox(&s_ApiKeyInput, &Button, 14.0f);
+
+	// подгружаем список языков от DeepL (один раз, пока не введён ключ - не грузим)
+	GameClient()->m_Chat.FetchLanguageList();
+	const std::vector<CChat::SLanguageEntry> &vLanguages = GameClient()->m_Chat.GetLanguageList();
+
+	if(vLanguages.empty())
+	{
+		MainView.HSplitTop(15.0f, nullptr, &MainView);
+		MainView.HSplitTop(20.0f, &Label, &MainView);
+		Ui()->DoLabel(&Label, Localize("Enter a valid API key above to load the language list"), 12.0f, TEXTALIGN_ML);
+		return;
+	}
+
+	// строим массив названий один раз за кадр (общий для обоих выпадающих списков)
+	static std::vector<const char *> s_vpLanguageNames;
+	s_vpLanguageNames.clear();
+	for(const auto &Entry : vLanguages)
+		s_vpLanguageNames.push_back(Entry.m_aName);
+
+	CUIRect ReadColumn, ReplyColumn;
+	MainView.HSplitTop(15.0f, nullptr, &MainView);
+	MainView.HSplitTop(60.0f, &MainView, nullptr); // сколько места отвести под оба дропдауна с подписями
+	MainView.VSplitMid(&ReadColumn, &ReplyColumn, 10.0f);
+
+	// --- Язык для чтения (перевод входящих) ---
+{
+	CUIRect DropRect, SearchRect;
+	ReadColumn.HSplitTop(20.0f, &Label, &ReadColumn);
+	Ui()->DoLabel(&Label, Localize("Reading language"), 14.0f, TEXTALIGN_ML);
+	ReadColumn.HSplitTop(2.0f, nullptr, &ReadColumn);
+	ReadColumn.HSplitTop(20.0f, &SearchRect, &ReadColumn);
+	ReadColumn.HSplitTop(2.0f, nullptr, &ReadColumn);
+	ReadColumn.HSplitTop(20.0f, &DropRect, &ReadColumn);
+
+	static CLineInputBuffered<32> s_ReadFilterInput;
+	Ui()->DoEditBox_Search(&s_ReadFilterInput, &SearchRect, 14.0f, !Ui()->IsPopupOpen() && !GameClient()->m_GameConsole.IsActive());
+
+	static std::vector<const char *> s_vpReadFilteredNames;
+	static std::vector<int> s_vReadFilteredIndices;
+	s_vpReadFilteredNames.clear();
+	s_vReadFilteredIndices.clear();
+	for(size_t i = 0; i < vLanguages.size(); i++)
+	{
+		if(s_ReadFilterInput.GetString()[0] != '\0' &&
+			!str_find_nocase(vLanguages[i].m_aName, s_ReadFilterInput.GetString()) &&
+			!str_find_nocase(vLanguages[i].m_aCode, s_ReadFilterInput.GetString()))
+			continue;
+		s_vpReadFilteredNames.push_back(vLanguages[i].m_aName);
+		s_vReadFilteredIndices.push_back(i);
+	}
+
+	int CurFilteredIndex = -1;
+	for(size_t i = 0; i < s_vReadFilteredIndices.size(); i++)
+		if(str_comp_nocase(vLanguages[s_vReadFilteredIndices[i]].m_aCode, g_Config.m_ClTranslatorTargetLang) == 0)
+			CurFilteredIndex = i;
+
+	static CUi::SDropDownState s_ReadDropDownState;
+	static CScrollRegion s_ReadDropDownScrollRegion;
+	s_ReadDropDownState.m_SelectionPopupContext.m_pScrollRegion = &s_ReadDropDownScrollRegion;
+
+	const int NewFilteredIndex = Ui()->DoDropDown(&DropRect, CurFilteredIndex, s_vpReadFilteredNames.data(), s_vpReadFilteredNames.size(), s_ReadDropDownState);
+	if(NewFilteredIndex != CurFilteredIndex && NewFilteredIndex >= 0 && (size_t)NewFilteredIndex < s_vReadFilteredIndices.size())
+	{
+		const int RealIndex = s_vReadFilteredIndices[NewFilteredIndex];
+		str_copy(g_Config.m_ClTranslatorTargetLang, vLanguages[RealIndex].m_aCode, sizeof(g_Config.m_ClTranslatorTargetLang));
+	}
+}
+
+	// --- Язык для ответа (/tw) ---
+// --- Язык для ответа (/tw) ---
+{
+	CUIRect DropRect, SearchRect;
+	ReplyColumn.HSplitTop(20.0f, &Label, &ReplyColumn);
+	Ui()->DoLabel(&Label, Localize("Reply language (/tw)"), 14.0f, TEXTALIGN_ML);
+	ReplyColumn.HSplitTop(2.0f, nullptr, &ReplyColumn);
+	ReplyColumn.HSplitTop(20.0f, &SearchRect, &ReplyColumn);
+	ReplyColumn.HSplitTop(2.0f, nullptr, &ReplyColumn);
+	ReplyColumn.HSplitTop(20.0f, &DropRect, &ReplyColumn);
+
+	static CLineInputBuffered<32> s_ReplyFilterInput;
+	Ui()->DoEditBox_Search(&s_ReplyFilterInput, &SearchRect, 14.0f, !Ui()->IsPopupOpen() && !GameClient()->m_GameConsole.IsActive());
+
+	static std::vector<const char *> s_vpReplyFilteredNames;
+	static std::vector<int> s_vReplyFilteredIndices;
+	s_vpReplyFilteredNames.clear();
+	s_vReplyFilteredIndices.clear();
+	for(size_t i = 0; i < vLanguages.size(); i++)
+	{
+		if(s_ReplyFilterInput.GetString()[0] != '\0' &&
+			!str_find_nocase(vLanguages[i].m_aName, s_ReplyFilterInput.GetString()) &&
+			!str_find_nocase(vLanguages[i].m_aCode, s_ReplyFilterInput.GetString()))
+			continue;
+		s_vpReplyFilteredNames.push_back(vLanguages[i].m_aName);
+		s_vReplyFilteredIndices.push_back(i);
+	}
+
+	int CurFilteredIndex = -1;
+	for(size_t i = 0; i < s_vReplyFilteredIndices.size(); i++)
+		if(str_comp_nocase(vLanguages[s_vReplyFilteredIndices[i]].m_aCode, g_Config.m_ClTranslatorReplyLang) == 0)
+			CurFilteredIndex = i;
+
+	static CUi::SDropDownState s_ReplyDropDownState;
+	static CScrollRegion s_ReplyDropDownScrollRegion;
+	s_ReplyDropDownState.m_SelectionPopupContext.m_pScrollRegion = &s_ReplyDropDownScrollRegion;
+
+	const int NewFilteredIndex = Ui()->DoDropDown(&DropRect, CurFilteredIndex, s_vpReplyFilteredNames.data(), s_vpReplyFilteredNames.size(), s_ReplyDropDownState);
+	if(NewFilteredIndex != CurFilteredIndex && NewFilteredIndex >= 0 && (size_t)NewFilteredIndex < s_vReplyFilteredIndices.size())
+	{
+		const int RealIndex = s_vReplyFilteredIndices[NewFilteredIndex];
+		str_copy(g_Config.m_ClTranslatorReplyLang, vLanguages[RealIndex].m_aCode, sizeof(g_Config.m_ClTranslatorReplyLang));
+	}
+}
 }

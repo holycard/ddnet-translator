@@ -4,7 +4,9 @@
 #define GAME_CLIENT_COMPONENTS_CHAT_H
 
 #include <base/str.h>
-
+#include <engine/shared/http.h>
+#include <memory>
+#include <engine/external/json-parser/json.h>
 #include <engine/console.h>
 #include <engine/shared/config.h>
 #include <engine/shared/protocol.h>
@@ -129,6 +131,12 @@ class CChat : public CComponent
 
 	std::vector<CCommand> m_vServerCommands;
 	bool m_ServerCommandsNeedSorting;
+static void ConTranslateSendAll(IConsole::IResult *pResult, void *pUserData);
+int m_TranslateCursor = 0;
+static void ConTranslatePrev(IConsole::IResult *pResult, void *pUserData);
+static void ConTranslateNext(IConsole::IResult *pResult, void *pUserData);
+static void ConTranslateConfirm(IConsole::IResult *pResult, void *pUserData);
+void ShowTranslateCursor();
 
 	struct CHistoryEntry
 	{
@@ -176,12 +184,62 @@ public:
 
 	void OnWindowResize() override;
 	void OnConsoleInit() override;
+	static void ConTranslate(IConsole::IResult *pResult, void *pUserData);
 	void OnStateChange(int NewState, int OldState) override;
 	void OnRender() override;
 	void OnPrepareLines(float y);
 	void Reset();
 	void OnRelease() override;
 	void OnMessage(int MsgType, void *pRawMsg) override;
+	
+	void TranslateAndSendAll(const char *pText);
+
+struct SPendingSendTranslateRequest
+{
+	std::shared_ptr<CHttpRequest> m_pRequest;
+	char m_aPlayerName[MAX_NAME_LENGTH]; 
+};
+std::vector<SPendingSendTranslateRequest> m_vPendingSendTranslateRequests;
+
+void TranslateAndSend(const char *pPlayerName, const char *pText);
+void CheckSendTranslateReplies();
+static void ConTranslateSend(IConsole::IResult *pResult, void *pUserData);
+
+struct SPendingTranslateRequest
+{
+	std::shared_ptr<CHttpRequest> m_pRequest;
+	int m_ClientId;
+	int m_Team;
+};
+std::vector<SPendingTranslateRequest> m_vPendingTranslateRequests;
+void CheckTranslateReplies();
+void TranslateMessage(int ClientId, int Team, const char *pMessage);
+void MaybeTranslate(int ClientId, int Team, const char *pMessage);
+
+struct SClientAntiSpam
+{
+	int64_t m_LastTranslateTime = 0;
+	int64_t m_LastAiReplyTime = 0;
+	char m_aLastMessage[256] = "";
+};
+SClientAntiSpam m_aAntiSpam[MAX_CLIENTS];
+
+
+struct SLanguageEntry
+{
+	char m_aCode[16];
+	char m_aName[64];
+};
+std::vector<SLanguageEntry> m_vLanguageList;
+std::shared_ptr<CHttpRequest> m_pLanguageListRequest;
+bool m_LanguageListRequested = false;
+
+void FetchLanguageList();
+void CheckLanguageListReply();
+const std::vector<SLanguageEntry> &GetLanguageList() const { return m_vLanguageList; }
+
+
+	
 	bool OnInput(const IInput::CEvent &Event) override;
 	void OnInit() override;
 
