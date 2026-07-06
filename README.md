@@ -9,10 +9,10 @@ A [DDNet](https://ddnet.org/) client modification — a built-in chat translator
 ## Screenshots
 
 <!-- Screenshot 1: an example of a translated message right in the in-game chat -->
-![Chat translation](screenshots/chat-translation.png)
+![Chat translation](chat-translation.png)
 
 <!-- Screenshot 2: the full Translator settings tab (key, languages, checkboxes) -->
-![Translator settings tab](screenshots/settings-tab.png)
+![Translator settings tab](settings-tab.png)
 
 
 ## Features
@@ -74,7 +74,7 @@ Resulting binary: `build/DDNet`.
 Open **Settings → Translator** in the client menu:
 
 <!-- You can duplicate the settings tab screenshot here with labeled fields -->
-![Translator tab setup](screenshots/settings-tab-annotated.png)
+![Translator tab setup](settings-tab-annotated.png)
 
 1. **Enable chat translation** — turns translation on.
 2. **DeepL API key** — paste your key (see "Requirements" above).
@@ -109,7 +109,7 @@ All three commands are saved in your chat history — you can recall them again 
 The **Players** tab (the server player list — where the mute and friend buttons also live) has a **Translate** column.
 
 <!-- Close-up screenshot: a player row with the Translate toggle enabled -->
-![Translate toggle on a player row](screenshots/player-translate-toggle.png)
+![Translate toggle on a player row](player-translate-toggle.png)
 
 Turning the toggle on for a specific player means you'll get a translation of **all** of their messages in regular chat — even if the general "translate all chat" mode is off, and even if they don't directly mention your name.
 
