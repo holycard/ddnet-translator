@@ -14,10 +14,6 @@ A [DDNet](https://ddnet.org/) client modification — a built-in chat translator
 <!-- Screenshot 2: the full Translator settings tab (key, languages, checkboxes) -->
 ![Translator settings tab](screenshots/settings-tab.png)
 
-<!-- Screenshot 3: the Players tab with the Translate column -->
-![Translate column in the player list](screenshots/players-tab.png)
-
----
 
 ## Features
 
