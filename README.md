@@ -74,7 +74,7 @@ Resulting binary: `build/DDNet`.
 Open **Settings → Translator** in the client menu:
 
 <!-- You can duplicate the settings tab screenshot here with labeled fields -->
-![Translator tab setup](settings-tab-annotated.png)
+![Translator tab setup](settings-tab.png)
 
 1. **Enable chat translation** — turns translation on.
 2. **DeepL API key** — paste your key (see "Requirements" above).
